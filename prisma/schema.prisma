@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Configuración local del tótem
+model Config {
+  key   String @id
+  value String
+
+  @@map("config")
+}
+
+// Campaña (solo datos de UI descargados del servidor)
+model Campaign {
+  id             Int     @id
+  name           String
+  slug           String
+  bg_screen1_url String?
+  bg_screen2_url String?
+
+  @@map("campaign")
+}
+
+// Fase activa descargada del servidor
+model Phase {
+  id                   Int     @id
+  number               Int
+  name                 String
+  date_from            String?
+  date_to              String?
+  predictions_required Int     @default(3)
+  min_correct_to_win   Int     @default(3)
+  version              Int     @default(1)
+
+  matches Match[]
+
+  @@map("phases")
+}
+
+// Partidos de la fase activa
+model Match {
+  id            Int     @id
+  phase_id      Int
+  match_number  Int
+  group_name    String?
+  team_local    String?
+  team_visitor  String?
+  goals_local   Int?
+  goals_visitor Int?
+  finished      Int     @default(0)
+
+  phase       Phase        @relation(fields: [phase_id], references: [id], onDelete: Cascade)
+  predictions Prediction[]
+
+  @@map("matches")
+}
+
+// Participantes guardados localmente
+model Participant {
+  id         Int      @id @default(autoincrement())
+  cedula     String   @unique
+  nombres    String
+  apellidos  String
+  telefono   String?
+  email      String?
+  created_at DateTime @default(now())
+
+  registrations Registration[]
+
+  @@map("participants")
+}
+
+// Registros offline pendientes de sincronizar
+model Registration {
+  id             Int      @id @default(autoincrement())
+  local_id       String   @unique
+  factura        String   @unique
+  participant_id Int
+  phase_id       Int
+  champion_team  String?
+  registered_at  DateTime @default(now())
+  synced         Int      @default(0)
+
+  participant Participant  @relation(fields: [participant_id], references: [id], onDelete: Cascade)
+  predictions Prediction[]
+
+  @@map("registrations")
+}
+
+// Predicciones por registro
+model Prediction {
+  id              Int @id @default(autoincrement())
+  registration_id Int
+  match_id        Int
+  goals_local     Int
+  goals_visitor   Int
+
+  registration Registration @relation(fields: [registration_id], references: [id], onDelete: Cascade)
+  match        Match         @relation(fields: [match_id], references: [id], onDelete: Cascade)
+
+  @@map("predictions")
+}
