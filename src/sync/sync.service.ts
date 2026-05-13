@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import axios from 'axios';
 import { PrismaService } from '../prisma.service';
 import { ConfigService } from '../config/config.service';
+import { LogsService } from '../logs/logs.service';
 
 @Injectable()
 export class SyncService {
@@ -12,6 +13,7 @@ export class SyncService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private logs: LogsService,
   ) {}
 
   // Cada 2 horas
@@ -37,6 +39,7 @@ export class SyncService {
       const isOffline = ['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET'].includes(err.code);
       const msg = isOffline ? 'Sin conexión al servidor' : (err.message || 'Error desconocido');
       this.logger.warn(`Sync falló: ${msg}`);
+      this.logs.append('ERROR', 'sync_error', msg, { code: err.code, message: err.message });
       return { status: 'no_internet', message: msg };
     } finally {
       this.syncing = false;
@@ -71,6 +74,7 @@ export class SyncService {
     const data = resp.data;
 
     if (!data.has_update) {
+      this.logs.append('INFO', 'sync_pull', 'Sin actualizaciones disponibles', { server_version: this.config.versionData });
       return { message: 'Ya actualizado', updated: false };
     }
 
@@ -154,6 +158,11 @@ export class SyncService {
 
     await this.config.set('version_data', String(data.server_version));
     this.logger.log(`Pull OK → v${data.server_version}, ${data.matches?.length || 0} partidos`);
+    this.logs.append('INFO', 'sync_pull', `Fase "${data.phase?.name}" v${data.server_version}`, {
+      phase: data.phase ? { id: data.phase.id, name: data.phase.name, number: data.phase.number, version: data.phase.version } : null,
+      matches_count: data.matches?.length || 0,
+      matches: data.matches?.map((m: any) => ({ id: m.id, local: m.team_local, visitor: m.team_visitor, number: m.match_number })),
+    });
     return { message: `Actualizado a v${data.server_version}`, updated: true };
   }
 
@@ -205,17 +214,26 @@ export class SyncService {
     }
 
     this.logger.log(`Push OK → ${pushed}/${pending.length} registros`);
+    this.logs.append('INFO', 'sync_push', `${pushed}/${pending.length} registros subidos`, {
+      pushed,
+      total: pending.length,
+      facturas: pending.map((r) => r.factura),
+    });
     return { message: `${pushed} registros enviados`, pushed };
   }
 
   // ── Estado actual para la UI de configuración ─────────────────────────────
   async getStatus() {
+    const phaseId = parseInt(this.config.phaseId);
     const [totalRegs, pendingRegs, phase] = await Promise.all([
       this.prisma.registration.count(),
       this.prisma.registration.count({ where: { synced: 0 } }),
-      this.prisma.phase.findFirst({
-        include: { _count: { select: { matches: true } } },
-      }),
+      phaseId
+        ? this.prisma.phase.findUnique({
+            where: { id: phaseId },
+            include: { _count: { select: { matches: true } } },
+          })
+        : null,
     ]);
 
     return {

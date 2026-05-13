@@ -1,26 +1,28 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import * as path from 'path';
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
+import { ServeStaticModule } from "@nestjs/serve-static";
+import * as path from "path";
 
-import { PrismaService } from './prisma.service';
-import { ConfigService } from './config/config.service';
-import { SyncService } from './sync/sync.service';
-import { RegistrationsService } from './registrations/registrations.service';
+import { PrismaService } from "./prisma.service";
+import { ConfigService } from "./config/config.service";
+import { SyncService } from "./sync/sync.service";
+import { RegistrationsService } from "./registrations/registrations.service";
+import { LogsService } from "./logs/logs.service";
 import {
   HealthController,
   TotemConfigController,
   SyncController,
   RegistrationsController,
+  LogsController,
   PhasesController,
-} from './controllers';
+} from "./controllers";
 
 // El totem-app compilado se sirve como archivos estáticos
 // En desarrollo: apunta a ../totem-app/dist
 // Se puede sobreescribir con la variable TOTEM_APP_DIST
-const STATIC_DIR = process.env.TOTEM_APP_DIST
-  || path.join(__dirname, '..', '..', 'totem-app', 'dist');
+const STATIC_DIR =
+  process.env.TOTEM_APP_DIST || path.join(__dirname, "..", "totem-app", "dist");
 
 @Module({
   imports: [
@@ -30,8 +32,8 @@ const STATIC_DIR = process.env.TOTEM_APP_DIST
     ScheduleModule.forRoot(),
     ServeStaticModule.forRoot({
       rootPath: STATIC_DIR,
-      exclude: ['/api/(.*)'],
-      serveStaticOptions: { index: 'index.html' },
+      exclude: ["/api/(.*)"],
+      serveStaticOptions: { index: "index.html" },
     }),
   ],
   controllers: [
@@ -39,13 +41,9 @@ const STATIC_DIR = process.env.TOTEM_APP_DIST
     TotemConfigController,
     SyncController,
     RegistrationsController,
+    LogsController,
     PhasesController,
   ],
-  providers: [
-    PrismaService,
-    ConfigService,
-    SyncService,
-    RegistrationsService,
-  ],
+  providers: [PrismaService, ConfigService, SyncService, RegistrationsService, LogsService],
 })
 export class AppModule {}

@@ -4,6 +4,7 @@ import {
 import { SyncService } from './sync/sync.service';
 import { ConfigService } from './config/config.service';
 import { RegistrationsService, RegisterInput } from './registrations/registrations.service';
+import { LogsService, LogEntry } from './logs/logs.service';
 import { PrismaService } from './prisma.service';
 
 // ── Health ────────────────────────────────────────────────────────────────
@@ -110,6 +111,29 @@ export class RegistrationsController {
   @Get('stats')
   stats() {
     return this.regService.getStats();
+  }
+}
+
+// ── Logs ───────────────────────────────────────────────────────────────────
+@Controller('api/logs')
+export class LogsController {
+  constructor(private logs: LogsService) {}
+
+  @Post()
+  append(@Body() body: { level: string; action: string; message: string; details?: any }) {
+    const level = body.level === 'ERROR' ? 'ERROR' : body.level === 'WARN' ? 'WARN' : 'INFO';
+    this.logs.append(level, body.action, body.message, body.details);
+    return { status: 'ok' };
+  }
+
+  @Get()
+  dates(): Promise<string[]> {
+    return this.logs.getAvailableDates();
+  }
+
+  @Get(':date')
+  byDate(@Param('date') date: string): Promise<LogEntry[]> {
+    return this.logs.getByDate(date);
   }
 }
 
