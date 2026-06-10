@@ -182,6 +182,7 @@ export class SyncService {
       const chunk = pending.slice(i, i + CHUNK_SIZE);
       const payload = chunk.map(reg => ({
         local_id: reg.local_id,
+        phase_id: reg.phase_id,
         factura: reg.factura,
         cedula: reg.participant.cedula,
         nombres: reg.participant.nombres,
