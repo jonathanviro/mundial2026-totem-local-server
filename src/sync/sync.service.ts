@@ -166,7 +166,7 @@ export class SyncService {
     return { message: `Actualizado a v${data.server_version}`, updated: true };
   }
 
-  // ── Push: sube registros pendientes al servidor ───────────────────────────
+  // ── Push: sube registros pendientes al servidor en lotes ──────────────────
   async pushRegistrations(): Promise<{ message: string; pushed: number }> {
     const pending = await this.prisma.registration.findMany({
       where: { synced: 0 },
@@ -175,51 +175,58 @@ export class SyncService {
 
     if (!pending.length) return { message: 'Sin registros pendientes', pushed: 0 };
 
-    const payload = pending.map(reg => ({
-      local_id: reg.local_id,
-      factura: reg.factura,
-      cedula: reg.participant.cedula,
-      nombres: reg.participant.nombres,
-      apellidos: reg.participant.apellidos,
-      telefono: reg.participant.telefono,
-      email: reg.participant.email,
-      champion_team: reg.champion_team,
-      registered_at: reg.registered_at,
-      predictions: reg.predictions.map(p => ({
-        match_id: p.match_id,
-        goals_local: p.goals_local,
-        goals_visitor: p.goals_visitor,
-      })),
-    }));
+    const CHUNK_SIZE = 50;
+    let totalPushed = 0;
 
-    const resp = await axios.post(
-      `${this.config.serverUrl}/api/sync/push/${this.config.totemCode}`,
-      { registrations: payload },
-      { timeout: 30000 },
-    );
+    for (let i = 0; i < pending.length; i += CHUNK_SIZE) {
+      const chunk = pending.slice(i, i + CHUNK_SIZE);
+      const payload = chunk.map(reg => ({
+        local_id: reg.local_id,
+        factura: reg.factura,
+        cedula: reg.participant.cedula,
+        nombres: reg.participant.nombres,
+        apellidos: reg.participant.apellidos,
+        telefono: reg.participant.telefono,
+        email: reg.participant.email,
+        champion_team: reg.champion_team,
+        registered_at: reg.registered_at,
+        predictions: reg.predictions.map(p => ({
+          match_id: p.match_id,
+          goals_local: p.goals_local,
+          goals_visitor: p.goals_visitor,
+        })),
+      }));
 
-    const results: any[] = resp.data.results || [];
-    let pushed = 0;
+      try {
+        const resp = await axios.post(
+          `${this.config.serverUrl}/api/sync/push/${this.config.totemCode}`,
+          { registrations: payload },
+          { timeout: 30000 },
+        );
 
-    for (const result of results) {
-      // ok, duplicate_factura y already_synced → marcar como sincronizado
-      if (['ok', 'duplicate_factura', 'already_synced'].includes(result.status)) {
-        await this.prisma.registration.updateMany({
-          where: { local_id: result.local_id },
-          data: { synced: 1 },
-        });
-        pushed++;
+        const results: any[] = resp.data.results || [];
+        for (const result of results) {
+          if (['ok', 'duplicate_factura', 'already_synced'].includes(result.status)) {
+            await this.prisma.registration.updateMany({
+              where: { local_id: result.local_id },
+              data: { synced: 1 },
+            });
+            totalPushed++;
+          }
+        }
+        this.logger.log(`Chunk ${i / CHUNK_SIZE + 1} OK → ${chunk.length} registros`);
+      } catch (err: any) {
+        this.logger.warn(`Chunk ${i / CHUNK_SIZE + 1} falló: ${err.message}`);
+        break;
       }
-      // status: 'error' → se mantiene en 0 para reintentar
     }
 
-    this.logger.log(`Push OK → ${pushed}/${pending.length} registros`);
-    this.logs.append('INFO', 'sync_push', `${pushed}/${pending.length} registros subidos`, {
-      pushed,
+    this.logger.log(`Push OK → ${totalPushed}/${pending.length} registros`);
+    this.logs.append('INFO', 'sync_push', `${totalPushed}/${pending.length} registros subidos`, {
+      pushed: totalPushed,
       total: pending.length,
-      facturas: pending.map((r) => r.factura),
     });
-    return { message: `${pushed} registros enviados`, pushed };
+    return { message: `${totalPushed} registros enviados`, pushed: totalPushed };
   }
 
   // ── Estado actual para la UI de configuración ─────────────────────────────
