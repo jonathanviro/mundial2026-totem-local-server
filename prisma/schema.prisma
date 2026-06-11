@@ -53,6 +53,7 @@ model Match {
   goals_local   Int?
   goals_visitor Int?
   finished      Int     @default(0)
+  date          String?
 
   phase       Phase        @relation(fields: [phase_id], references: [id], onDelete: Cascade)
   predictions Prediction[]

@@ -61,12 +61,20 @@ export class SyncService {
 
   // ── Pull: descarga fase activa y partidos del servidor ────────────────────
   async pullData(): Promise<{ message: string; updated: boolean }> {
+    // Detectar si hay partidos sin fecha para forzar recarga con version=0
+    const sinFecha = await this.prisma.match.count({ where: { date: null } });
+    const versionToSend = sinFecha > 0 ? 0 : this.config.versionData;
+
+    if (sinFecha > 0) {
+      this.logger.log(`Forzando descarga: ${sinFecha} partidos sin fecha (enviando v0)`);
+    }
+
     const url = `${this.config.serverUrl}/api/sync/data/${this.config.totemCode}`;
     const phaseId = parseInt(this.config.phaseId) || undefined;
     const resp = await axios.get(url, {
       params: {
-        version: this.config.versionData,
-        phase_id: phaseId, // Send current phase_id as number
+        version: versionToSend,
+        phase_id: phaseId,
       },
       timeout: 20000,
     });
@@ -140,6 +148,7 @@ export class SyncService {
             goals_local: m.goals_local ?? null,
             goals_visitor: m.goals_visitor ?? null,
             finished: m.finished ? 1 : 0,
+            date: m.date ?? null,
           },
           create: {
             id: m.id,
@@ -151,6 +160,7 @@ export class SyncService {
             goals_local: m.goals_local ?? null,
             goals_visitor: m.goals_visitor ?? null,
             finished: m.finished ? 1 : 0,
+            date: m.date ?? null,
           },
         });
       }
